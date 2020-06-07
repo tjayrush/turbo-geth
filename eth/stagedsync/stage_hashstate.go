@@ -20,9 +20,7 @@ import (
 	"github.com/ledgerwatch/turbo-geth/eth/stagedsync/stages"
 	"github.com/ledgerwatch/turbo-geth/ethdb"
 	"github.com/ledgerwatch/turbo-geth/log"
-	"github.com/ledgerwatch/turbo-geth/trie"
 
-	"github.com/pkg/errors"
 	"github.com/ugorji/go/codec"
 )
 
@@ -54,21 +52,7 @@ func SpawnHashStateStage(s *StageState, stateDB ethdb.Database, datadir string, 
 	hash := rawdb.ReadCanonicalHash(stateDB, syncHeadNumber)
 	syncHeadBlock := rawdb.ReadBlock(stateDB, hash, syncHeadNumber)
 
-	blockNr := syncHeadBlock.Header().Number.Uint64()
-
-	log.Info("Validating root hash", "block", blockNr, "blockRoot", syncHeadBlock.Root().Hex())
-	loader := trie.NewSubTrieLoader(blockNr)
-	rl := trie.NewRetainList(0)
-	subTries, err1 := loader.LoadFromFlatDB(stateDB, rl, nil /*HashCollector*/, [][]byte{nil}, []int{0}, false)
-	if err1 != nil {
-		return errors.Wrap(err1, "checking root hash failed")
-	}
-	if len(subTries.Hashes) != 1 {
-		return fmt.Errorf("expected 1 hash, got %d", len(subTries.Hashes))
-	}
-	if subTries.Hashes[0] != syncHeadBlock.Root() {
-		return fmt.Errorf("wrong trie root: %x, expected (from header): %x", subTries.Hashes[0], syncHeadBlock.Root())
-	}
+	blockNr := syncHeadBlock.Header().Number.Uint64()	
 
 	return s.DoneAndUpdate(stateDB, blockNr)
 }
