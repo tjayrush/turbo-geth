@@ -119,12 +119,10 @@ func setModeOnEmpty(db Database, key []byte, currentValue bool) error {
 		return err
 	}
 	if errors.Is(err, ErrKeyNotFound) {
-		val := []byte{}
 		if currentValue {
-			val = []byte{1}
-		}
-		if err = db.Put(dbutils.DatabaseInfoBucket, key, val); err != nil {
-			return err
+			if err = db.Put(dbutils.DatabaseInfoBucket, key, []byte{1}); err != nil {
+				return err
+			}
 		}
 	}
 
