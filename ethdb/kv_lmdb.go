@@ -78,8 +78,9 @@ func (opts lmdbOpts) Open() (KV, error) {
 	if opts.readOnly {
 		flags |= lmdb.Readonly
 	}
+	flags |= lmdb.NoSync
 	if opts.inMem {
-		flags |= lmdb.NoSync | lmdb.NoMetaSync
+		flags |= lmdb.NoMetaSync
 	}
 	err = env.Open(opts.path, flags, 0664)
 	if err != nil {
