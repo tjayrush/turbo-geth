@@ -15,13 +15,14 @@ import (
 	"github.com/ledgerwatch/turbo-geth/core/types/accounts"
 	"github.com/ledgerwatch/turbo-geth/ethdb"
 	"github.com/ledgerwatch/turbo-geth/log"
+	"github.com/ledgerwatch/turbo-geth/trie"
 
 	"github.com/ugorji/go/codec"
 )
 
 var cbor codec.CborHandle
 
-func SpawnHashStateStage(s *StageState, stateDB ethdb.Database, datadir string, quit chan struct{}) error {
+func SpawnHashStateStage(s *StageState, stateDB ethdb.Database, t2 *trie.Trie2, datadir string, quit chan struct{}) error {
 	syncHeadNumber, err := s.ExecutionAt(stateDB)
 	if err != nil {
 		return err
@@ -41,20 +42,20 @@ func SpawnHashStateStage(s *StageState, stateDB ethdb.Database, datadir string, 
 			return err
 		}
 	}
-	if err := updateIntermediateHashes(s, stateDB, s.BlockNumber, syncHeadNumber, datadir, quit); err != nil {
+	if err := updateIntermediateHashes(s, stateDB, t2, s.BlockNumber, syncHeadNumber, datadir, quit); err != nil {
 		return err
 	}
 	return s.DoneAndUpdate(stateDB, syncHeadNumber)
 }
 
-func UnwindHashStateStage(u *UnwindState, s *StageState, db ethdb.Database, datadir string, quit chan struct{}) error {
+func UnwindHashStateStage(u *UnwindState, s *StageState, db ethdb.Database, t2 *trie.Trie2, datadir string, quit chan struct{}) error {
 	if err := unwindHashStateStageImpl(u, s, db, datadir, quit); err != nil {
 		return err
 	}
 	hash := rawdb.ReadCanonicalHash(db, u.UnwindPoint)
 	syncHeadHeader := rawdb.ReadHeader(db, hash, u.UnwindPoint)
 	expectedRootHash := syncHeadHeader.Root
-	if err := unwindIntermediateHashesStageImpl(u, s, db, datadir, expectedRootHash, quit); err != nil {
+	if err := unwindIntermediateHashesStageImpl(u, s, db, t2, datadir, expectedRootHash, quit); err != nil {
 		return err
 	}
 	if err := u.Done(db); err != nil {

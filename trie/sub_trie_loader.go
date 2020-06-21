@@ -55,13 +55,13 @@ const (
 )
 
 // LoadFromDb loads subtries from a state database.
-func (stl *SubTrieLoader) LoadSubTries(db ethdb.Database, blockNr uint64, rl RetainDecider, hc HashCollector, dbPrefixes [][]byte, fixedbits []int, trace bool) (SubTries, error) {
-	return stl.LoadFromFlatDB(db, rl, hc, dbPrefixes, fixedbits, trace)
+func (stl *SubTrieLoader) LoadSubTries(db ethdb.Database, t2 *Trie2, blockNr uint64, rl RetainDecider, hc HashCollector, dbPrefixes [][]byte, fixedbits []int, trace bool) (SubTries, error) {
+	return stl.LoadFromFlatDB(db, t2, rl, hc, dbPrefixes, fixedbits, trace)
 }
 
-func (stl *SubTrieLoader) LoadFromFlatDB(db ethdb.Database, rl RetainDecider, hc HashCollector, dbPrefixes [][]byte, fixedbits []int, trace bool) (SubTries, error) {
+func (stl *SubTrieLoader) LoadFromFlatDB(db ethdb.Database, t2 *Trie2, rl RetainDecider, hc HashCollector, dbPrefixes [][]byte, fixedbits []int, trace bool) (SubTries, error) {
 	loader := NewFlatDbSubTrieLoader()
-	if err1 := loader.Reset(db, rl, rl, hc, dbPrefixes, fixedbits, trace); err1 != nil {
+	if err1 := loader.Reset(db, t2, rl, rl, hc, dbPrefixes, fixedbits, trace); err1 != nil {
 		return SubTries{}, err1
 	}
 	subTries, err := loader.LoadSubTries()

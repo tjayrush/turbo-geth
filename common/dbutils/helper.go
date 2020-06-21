@@ -1,8 +1,5 @@
 package dbutils
 
-import (
-)
-
 // EncodeTimestamp has the property: if a < b, then Encoding(a) < Encoding(b) lexicographically
 func EncodeTimestamp(timestamp uint64) []byte {
 	var suffix []byte
@@ -51,6 +48,21 @@ func NextSubtree(in []byte) ([]byte, bool) {
 	copy(r, in)
 	for i := len(r) - 1; i >= 0; i-- {
 		if r[i] != 255 {
+			r[i]++
+			return r, true
+		}
+
+		r[i] = 0
+	}
+	return nil, false
+}
+
+// NextSubtreeHex does []byte++. Returns false if overflow.
+func NextSubtreeHex(in []byte) ([]byte, bool) {
+	r := make([]byte, len(in))
+	copy(r, in)
+	for i := len(r) - 1; i >= 0; i-- {
+		if r[i] != 15 {
 			r[i]++
 			return r, true
 		}

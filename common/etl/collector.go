@@ -5,13 +5,14 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
+	"io"
+	"runtime"
+
 	"github.com/ledgerwatch/turbo-geth/common"
 	"github.com/ledgerwatch/turbo-geth/ethdb"
 	"github.com/ledgerwatch/turbo-geth/log"
 	"github.com/ugorji/go/codec"
 	"golang.org/x/sync/errgroup"
-	"io"
-	"runtime"
 )
 
 type LoadNextFunc func(k []byte, v []byte) error

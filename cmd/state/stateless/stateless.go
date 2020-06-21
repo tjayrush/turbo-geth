@@ -182,6 +182,7 @@ func Stateless(
 	stateDb, err := createDb(statefile)
 	check(err)
 	defer stateDb.Close()
+	t2 := trie.NewTrie2()
 	var starkBlocks map[uint64]struct{}
 	if starkBlocksFile != "" {
 		starkBlocks, err = parseStarkBlockFile(starkBlocksFile)
@@ -212,7 +213,7 @@ func Stateless(
 
 		if verifySnapshot {
 			fmt.Println("Verifying snapshot..")
-			checkRoots(stateDb, preRoot, blockNum-1)
+			checkRoots(stateDb, t2, preRoot, blockNum-1)
 			fmt.Println("Verifying snapshot... OK")
 		}
 	}

@@ -107,6 +107,7 @@ type DbWithPendingMutations interface {
 	Commit() (uint64, error)
 	Rollback()
 	BatchSize() int
+	WalkMutations(bucket []byte, walker func(k, v []byte) error) error
 }
 
 type HasKV interface {

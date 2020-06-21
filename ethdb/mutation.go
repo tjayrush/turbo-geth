@@ -214,6 +214,15 @@ func (m *mutation) NewBatch() DbWithPendingMutations {
 	return mm
 }
 
+func (m *mutation) WalkMutations(bucket []byte, walker func(k, v []byte) error) error {
+	for k, v := range m.puts.mp[string(bucket)] {
+		if err := walker([]byte(k), v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *mutation) panicOnEmptyDB() {
 	if m.db == nil {
 		panic("Not implemented")

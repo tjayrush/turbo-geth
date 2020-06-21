@@ -86,11 +86,7 @@ func runGeth(t *testing.T, args ...string) *testgeth {
 		tt.Cleanup = func() { os.RemoveAll(tt.Datadir) }
 		args = append([]string{"-datadir", tt.Datadir}, args...)
 		// Remove the temporary datadir if something fails below.
-		defer func() {
-			if t.Failed() {
-				tt.Cleanup()
-			}
-		}()
+		defer tt.Cleanup()
 	}
 
 	// Boot "geth". This actually runs the test binary but the TestMain

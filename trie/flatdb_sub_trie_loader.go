@@ -69,6 +69,7 @@ type FlatDbSubTrieLoader struct {
 	receiver        StreamReceiver
 	defaultReceiver *DefaultReceiver
 	hc              HashCollector
+	trie2           *Trie2
 }
 
 type DefaultReceiver struct {
@@ -91,6 +92,7 @@ type DefaultReceiver struct {
 	leafData     GenStructStepLeafData
 	accData      GenStructStepAccountData
 	witnessSize  uint64
+	t2w          ethdb.Cursor
 }
 
 func NewDefaultReceiver() *DefaultReceiver {
@@ -98,22 +100,26 @@ func NewDefaultReceiver() *DefaultReceiver {
 }
 
 func NewFlatDbSubTrieLoader() *FlatDbSubTrieLoader {
+	t2 := ethdb.NewBolt().InMem().MustOpen()
 	fstl := &FlatDbSubTrieLoader{
 		defaultReceiver: NewDefaultReceiver(),
+		trie2:           t2,
 	}
 	return fstl
 }
 
 // Reset prepares the loader for reuse
-func (fstl *FlatDbSubTrieLoader) Reset(db ethdb.Database, rl RetainDecider, receiverDecider RetainDecider, hc HashCollector, dbPrefixes [][]byte, fixedbits []int, trace bool) error {
+func (fstl *FlatDbSubTrieLoader) Reset(db ethdb.Database, trie2 *Trie2, rl RetainDecider, receiverDecider RetainDecider, hc HashCollector, dbPrefixes [][]byte, fixedbits []int, trace bool) error {
 	fstl.defaultReceiver.Reset(receiverDecider, hc, trace)
 	fstl.hc = hc
 	fstl.receiver = fstl.defaultReceiver
 	fstl.rangeIdx = 0
+	fstl.trie2 = trie2
 
 	fstl.minKeyAsNibbles.Reset()
 	fstl.trace = trace
 	fstl.rl = rl
+
 	fstl.dbPrefixes = dbPrefixes
 	fstl.itemPresent = false
 	if fstl.trace {
@@ -151,9 +157,14 @@ func (fstl *FlatDbSubTrieLoader) SetStreamReceiver(receiver StreamReceiver) {
 	fstl.receiver = receiver
 }
 
+type cursor interface {
+	SeekTo(seek []byte) ([]byte, []byte, error)
+	Next() ([]byte, []byte, error)
+}
+
 // iteration moves through the database buckets and creates at most
 // one stream item, which is indicated by setting the field fstl.itemPresent to true
-func (fstl *FlatDbSubTrieLoader) iteration(c, ih ethdb.Cursor, first bool) error {
+func (fstl *FlatDbSubTrieLoader) iteration(c, ih cursor, t2w ethdb.Cursor, first bool) error {
 	var isIH bool
 	var minKey []byte
 	var err error
@@ -279,6 +290,13 @@ func (fstl *FlatDbSubTrieLoader) iteration(c, ih ethdb.Cursor, first bool) error
 			return nil
 		}
 		fstl.itemPresent = true
+		if fstl.rl.Retain(fstl.k) {
+			kk := make([]byte, len(fstl.k)*2)
+			DecompressNibbles(fstl.k, &kk)
+			if err := t2w.Put(kk, common.CopyBytes(fstl.v)); err != nil {
+				return err
+			}
+		}
 		if len(fstl.k) > common.HashLength {
 			fstl.itemType = StorageStreamItem
 			fstl.storageKey = append(fstl.storageKey[:0], fstl.k...)
@@ -347,6 +365,12 @@ func (fstl *FlatDbSubTrieLoader) iteration(c, ih ethdb.Cursor, first bool) error
 		} // go to children, not to sibling
 		return nil
 	}
+
+	//kk := make([]byte, len(fstl.ihK)*2)
+	//DecompressNibbles(fstl.ihK, &kk)
+	//if err := t2w.Put(kk, common.CopyBytes(fstl.ihV)); err != nil {
+	//	return err
+	//}
 
 	if fstl.trace {
 		fmt.Printf("fstl.ihK %x, fstl.accAddrHashWithInc %x\n", fstl.ihK, fstl.accAddrHashWithInc[:])
@@ -439,7 +463,19 @@ func (fstl *FlatDbSubTrieLoader) iteration(c, ih ethdb.Cursor, first bool) error
 
 func (dr *DefaultReceiver) Reset(rl RetainDecider, hc HashCollector, trace bool) {
 	dr.rl = rl
-	dr.hc = hc
+	dr.hc = func(keyHex []byte, hash []byte) error {
+		if len(keyHex) > 0 && hash != nil {
+			fmt.Printf("Put3: %x %x\n", keyHex, hash)
+			if err := dr.t2w.Put(common.CopyBytes(keyHex), common.CopyBytes(hash)); err != nil {
+				return err
+			}
+		}
+
+		if hc != nil {
+			return hc(keyHex, hash)
+		}
+		return nil
+	}
 	dr.curr.Reset()
 	dr.succ.Reset()
 	dr.value.Reset()
@@ -631,10 +667,69 @@ func (fstl *FlatDbSubTrieLoader) LoadSubTries() (SubTries, error) {
 	if len(fstl.dbPrefixes) == 0 {
 		return SubTries{}, nil
 	}
+
+	t2Write, _ := fstl.trie2.KV().Begin(context.Background(), true)
+	defer t2Write.Commit(context.Background())
+	t2w := t2Write.Bucket(dbutils.CurrentStateBucket).Cursor()
+	fstl.defaultReceiver.t2w = t2w
+	t2Read, _ := fstl.trie2.KV().Begin(context.Background(), false)
+	defer t2Read.Rollback()
+	t2r := t2Read.Bucket(dbutils.CurrentStateBucket).Cursor()
+
+	defer func() {
+		t2Read.Rollback()
+		fmt.Printf("Checking!\n")
+		t := time.Now()
+		t2Write.Commit(context.Background())
+		fmt.Printf("Commit Took: %s\n", time.Since(t))
+		t2Read, _ = fstl.trie2.KV().Begin(context.Background(), false)
+		t2r = t2Read.Bucket(dbutils.CurrentStateBucket).Cursor()
+		i := 0
+		var diskStateSize uint64
+		var diskIHSize uint64
+		fstl.kv.View(context.Background(), func(tx ethdb.Tx) error {
+			c := tx.Bucket(dbutils.CurrentStateBucket).Cursor()
+			ih := tx.Bucket(dbutils.IntermediateTrieHashBucket).Cursor()
+			t2r.Walk(func(k, v []byte) (bool, error) {
+				if len(k)%2 == 1 {
+					return true, nil
+				}
+				kk := make([]byte, len(k)/2)
+				CompressNibbles(k, &kk)
+
+				if len(kk) == common.HashLength || len(kk) == common.HashLength*2+common.IncarnationLength {
+					_, vv, _ := c.Seek(kk)
+					if !bytes.Equal(vv, v) {
+						fmt.Printf("Not equal: %x, %x, %x, %x\n", k, kk, v, vv)
+					} else {
+						i++
+					}
+				} else {
+					ihK, ihV, _ := ih.Seek(kk)
+					if bytes.Equal(ihK, k) && !bytes.Equal(ihV, v) {
+						fmt.Printf("Not equal2: %x, %x, %x\n", kk, v, ihV)
+					} else {
+						i++
+					}
+				}
+
+				return i < 10_000, nil
+			})
+
+			diskStateSize, _ = tx.Bucket(dbutils.CurrentStateBucket).Size()
+			diskIHSize, _ = tx.Bucket(dbutils.IntermediateTrieHashBucket).Size()
+			return nil
+		})
+
+		memBucketSize, _ := t2Read.Bucket(dbutils.CurrentStateBucket).Size()
+		fmt.Printf("Checked: %d, MemBucketSize: %dMb, DiskStateSize: %dMb, DiskIhSize: %dMb\n", i, memBucketSize/1024/1024, diskStateSize/1024/1024, diskIHSize/1024/1024)
+	}()
+
 	if err := fstl.kv.View(context.Background(), func(tx ethdb.Tx) error {
 		c := tx.Bucket(dbutils.CurrentStateBucket).Cursor()
 		ih := tx.Bucket(dbutils.IntermediateTrieHashBucket).Cursor()
 		iwl := tx.Bucket(dbutils.IntermediateWitnessSizeBucket).Cursor()
+
 		fstl.getWitnessSize = func(prefix []byte) uint64 {
 			if !debug.IsTrackWitnessSizeEnabled() {
 				return 0
@@ -648,12 +743,14 @@ func (fstl *FlatDbSubTrieLoader) LoadSubTries() (SubTries, error) {
 			}
 			return binary.BigEndian.Uint64(v)
 		}
-		if err := fstl.iteration(c, ih, true /* first */); err != nil {
+		if err := fstl.iteration(c, ih, t2w, true /* first */); err != nil {
 			return err
 		}
+		j := 0
 		for fstl.rangeIdx < len(fstl.dbPrefixes) {
+			j++
 			for !fstl.itemPresent {
-				if err := fstl.iteration(c, ih, false /* first */); err != nil {
+				if err := fstl.iteration(c, ih, t2w, false /* first */); err != nil {
 					return err
 				}
 			}
@@ -664,6 +761,7 @@ func (fstl *FlatDbSubTrieLoader) LoadSubTries() (SubTries, error) {
 				fstl.itemPresent = false
 			}
 		}
+		fmt.Printf("Iterate  over %d\n", j)
 		return nil
 	}); err != nil {
 		return SubTries{}, err

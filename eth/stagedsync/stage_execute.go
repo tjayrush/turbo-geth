@@ -1,6 +1,8 @@
 package stagedsync
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -9,9 +11,9 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
-
 	"github.com/ledgerwatch/turbo-geth/common"
 	"github.com/ledgerwatch/turbo-geth/common/dbutils"
+	"github.com/ledgerwatch/turbo-geth/common/etl"
 	"github.com/ledgerwatch/turbo-geth/core"
 	"github.com/ledgerwatch/turbo-geth/core/rawdb"
 	"github.com/ledgerwatch/turbo-geth/core/state"
@@ -76,7 +78,14 @@ func (l *progressLogger) Stop() {
 	close(l.quit)
 }
 
-func SpawnExecuteBlocksStage(s *StageState, stateDB ethdb.Database, blockchain BlockChain, limit uint64, quit chan struct{}, dests vm.Cache, writeReceipts bool) error {
+func SpawnExecuteBlocksStage(s *StageState, stateDB ethdb.Database, trie2 ethdb.Database, datadir string, blockchain BlockChain, limit uint64, quit chan struct{}, dests vm.Cache, writeReceipts bool) error {
+	stateTouches := etl.NewCollector(datadir, etl.NewSortableBuffer(etl.BufferOptimalSize))
+
+	stateBucket := dbutils.CurrentStateBucket
+	if core.UsePlainStateExecution {
+		stateBucket = dbutils.PlainStateBucket
+	}
+
 	nextBlockNumber := s.BlockNumber
 	if prof {
 		f, err := os.Create(fmt.Sprintf("cpu-%d.prof", s.BlockNumber))
@@ -170,6 +179,10 @@ func SpawnExecuteBlocksStage(s *StageState, stateDB ethdb.Database, blockchain B
 			}
 			start := time.Now()
 			sz := batch.BatchSize()
+			if err = batch.WalkMutations(stateBucket, stateTouches.Collect); err != nil {
+				return err
+			}
+
 			if _, err = batch.Commit(); err != nil {
 				return err
 			}
@@ -191,6 +204,43 @@ func SpawnExecuteBlocksStage(s *StageState, stateDB ethdb.Database, blockchain B
 			}
 		}
 	}
+
+	var loadFunc etl.LoadFunc = func(k []byte, value []byte, state etl.State, next etl.LoadNextFunc) error {
+		if value != nil {
+			fmt.Printf("Normal: %x, %x\n", k, value)
+			return next(k, value)
+		}
+		if len(k) > common.HashLength {
+			fmt.Printf("Long: %x, %x\n", k, value)
+			return next(k, value)
+		}
+		fmt.Printf("Short: %x, %x\n", k, value)
+		if err := next(k, nil); err != nil {
+			return err
+		}
+		return stateDB.(ethdb.HasKV).KV().View(context.Background(), func(tx ethdb.Tx) error {
+			c := tx.Bucket(dbutils.IntermediateTrieHashBucket).Cursor()
+			for kk, _, err := c.Seek(k); kk != nil; kk, _, err = c.Next() {
+				if err != nil {
+					return err
+				}
+				if !bytes.HasPrefix(kk, k) {
+					break
+				}
+				fmt.Printf("Aditional: %x, %x\n", k, value)
+				if err := next(kk, nil); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+	t := time.Now()
+	if err := stateTouches.Load(stateDB, dbutils.IntermediateTrieHashBucket, loadFunc, etl.TransformArgs{Quit: quit}); err != nil {
+		//if err := stateTouches.Load(trie2, dbutils.IntermediateTrieHashBucket, etl.IdentityLoadFunc, etl.TransformArgs{Quit: quit}); err != nil {
+		return err
+	}
+	fmt.Printf("Delete IH: %s\n", time.Since(t))
 
 	if err := s.Update(batch, atomic.LoadUint64(&nextBlockNumber)); err != nil {
 		return err

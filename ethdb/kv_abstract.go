@@ -39,7 +39,6 @@ type Bucket interface {
 
 type Cursor interface {
 	Prefix(v []byte) Cursor
-	MatchBits(uint) Cursor
 	Prefetch(v uint) Cursor
 	NoValues() NoValuesCursor
 

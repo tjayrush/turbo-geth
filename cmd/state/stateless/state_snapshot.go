@@ -246,13 +246,13 @@ func compare_snapshot(stateDb ethdb.Database, db ethdb.KV, filename string) {
 	}
 }
 
-func checkRoots(stateDb ethdb.Database, rootHash common.Hash, blockNum uint64) {
+func checkRoots(stateDb ethdb.Database, t2 *trie.Trie2, rootHash common.Hash, blockNum uint64) {
 	startTime := time.Now()
 	if blockNum > 0 {
 		l := trie.NewSubTrieLoader(blockNum)
 		fmt.Printf("new resolve request for root block with hash %x\n", rootHash)
 		rl := trie.NewRetainList(0)
-		subTries, err := l.LoadSubTries(stateDb, blockNum, rl, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+		subTries, err := l.LoadSubTries(stateDb, t2, blockNum, rl, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 		if err != nil {
 			fmt.Printf("%v\n", err)
 		}
@@ -293,7 +293,7 @@ func checkRoots(stateDb ethdb.Database, rootHash common.Hash, blockNum uint64) {
 			copy(contractPrefix, addrHash[:])
 			binary.BigEndian.PutUint64(contractPrefix[common.HashLength:], ^account.Incarnation)
 			rl := trie.NewRetainList(0)
-			subTries, err := sl.LoadSubTries(stateDb, blockNum, rl, nil /* HashCollector */, [][]byte{contractPrefix}, []int{8 * len(contractPrefix)}, false)
+			subTries, err := sl.LoadSubTries(stateDb, t2, blockNum, rl, nil /* HashCollector */, [][]byte{contractPrefix}, []int{8 * len(contractPrefix)}, false)
 			if err != nil {
 				fmt.Printf("%x: %v\n", addrHash, err)
 				fmt.Printf("incarnation: %d, account.Root: %x\n", account.Incarnation, account.Root)
@@ -309,6 +309,7 @@ func checkRoots(stateDb ethdb.Database, rootHash common.Hash, blockNum uint64) {
 func VerifySnapshot(path string) {
 	ethDb := ethdb.MustOpen(path)
 	defer ethDb.Close()
+	t2 := trie.NewTrie2()
 	hash := rawdb.ReadHeadBlockHash(ethDb)
 	number := rawdb.ReadHeaderNumber(ethDb, hash)
 	var currentBlockNr uint64
@@ -320,5 +321,5 @@ func VerifySnapshot(path string) {
 	}
 	fmt.Printf("Block number: %d\n", currentBlockNr)
 	fmt.Printf("Block root hash: %x\n", preRoot)
-	checkRoots(ethDb, preRoot, currentBlockNr)
+	checkRoots(ethDb, t2, preRoot, currentBlockNr)
 }

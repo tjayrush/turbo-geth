@@ -6,6 +6,7 @@ import (
 	"github.com/ledgerwatch/turbo-geth/eth/stagedsync/stages"
 	"github.com/ledgerwatch/turbo-geth/ethdb"
 	"github.com/ledgerwatch/turbo-geth/log"
+	"github.com/ledgerwatch/turbo-geth/trie"
 )
 
 const prof = false // whether to profile
@@ -23,6 +24,7 @@ func PrepareStagedSync(
 ) (*State, error) {
 	defer log.Info("Staged sync finished")
 
+	t2 := trie.NewTrie2()
 	stages := []*Stage{
 		{
 			ID:          stages.Headers,
@@ -58,7 +60,7 @@ func PrepareStagedSync(
 			ID:          stages.Execution,
 			Description: "Executing blocks w/o hash checks",
 			ExecFunc: func(s *StageState, u Unwinder) error {
-				return SpawnExecuteBlocksStage(s, stateDB, blockchain, 0 /* limit (meaning no limit) */, quitCh, dests, storageMode.Receipts)
+				return SpawnExecuteBlocksStage(s, stateDB, t2, datadir, blockchain, 0 /* limit (meaning no limit) */, quitCh, dests, storageMode.Receipts)
 			},
 			UnwindFunc: func(u *UnwindState, s *StageState) error {
 				return UnwindExecutionStage(u, s, stateDB)
@@ -68,10 +70,10 @@ func PrepareStagedSync(
 			ID:          stages.HashState,
 			Description: "Hashing the key in the state",
 			ExecFunc: func(s *StageState, u Unwinder) error {
-				return SpawnHashStateStage(s, stateDB, datadir, quitCh)
+				return SpawnHashStateStage(s, stateDB, t2, datadir, quitCh)
 			},
 			UnwindFunc: func(u *UnwindState, s *StageState) error {
-				return UnwindHashStateStage(u, s, stateDB, datadir, quitCh)
+				return UnwindHashStateStage(u, s, stateDB, t2, datadir, quitCh)
 			},
 		},
 		{

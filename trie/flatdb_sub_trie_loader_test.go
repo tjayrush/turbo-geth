@@ -22,7 +22,10 @@ import (
 func TestResolve1(t *testing.T) {
 	t.Skip("weird case of abandoned storage, will handle it later")
 
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	putStorage := func(k string, v string) {
 		err := db.Put(dbutils.CurrentStateBucket, common.Hex2Bytes(k), common.Hex2Bytes(v))
 		require.NoError(err)
@@ -31,7 +34,7 @@ func TestResolve1(t *testing.T) {
 	r := NewSubTrieLoader(0)
 	rs := NewRetainList(0)
 	rs.AddKey(common.Hex2Bytes("aaaaabbbbbaaaaabbbbbaaaaabbbbbaa"))
-	subTries, err := r.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaabbbbb")}, []int{40}, false)
+	subTries, err := r.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaabbbbb")}, []int{40}, false)
 	require.NoError(err)
 	tr := New(common.Hash{})
 	assert.NoError(tr.HookSubTries(subTries, [][]byte{nil})) // hook up to the root of the trie
@@ -43,7 +46,10 @@ func TestResolve1(t *testing.T) {
 func TestResolve2(t *testing.T) {
 	t.Skip("weird case of abandoned storage, will handle it later")
 
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	putStorage := func(k string, v string) {
 		err := db.Put(dbutils.CurrentStateBucket, common.Hex2Bytes(k), common.Hex2Bytes(v))
 		require.NoError(err)
@@ -54,7 +60,7 @@ func TestResolve2(t *testing.T) {
 	r := NewSubTrieLoader(0)
 	rs := NewRetainList(0)
 	rs.AddKey(common.Hex2Bytes("aaaaabbbbbaaaaabbbbbaaaaabbbbbaa"))
-	subTries, err := r.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaaaaaaa")}, []int{40}, false)
+	subTries, err := r.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaaaaaaa")}, []int{40}, false)
 	require.NoError(err)
 
 	tr := New(common.Hash{})
@@ -67,7 +73,10 @@ func TestResolve2(t *testing.T) {
 func TestResolve2Keep(t *testing.T) {
 	t.Skip("weird case of abandoned storage, will handle it later")
 
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	putStorage := func(k string, v string) {
 		err := db.Put(dbutils.CurrentStateBucket, common.Hex2Bytes(k), common.Hex2Bytes(v))
 		require.NoError(err)
@@ -78,7 +87,7 @@ func TestResolve2Keep(t *testing.T) {
 	r := NewSubTrieLoader(0)
 	rs := NewRetainList(0)
 	rs.AddKey(common.Hex2Bytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	subTries, err := r.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaaaaaaa")}, []int{40}, false)
+	subTries, err := r.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaaaaaaa")}, []int{40}, false)
 	require.NoError(err)
 
 	tr := New(common.Hash{})
@@ -91,7 +100,10 @@ func TestResolve2Keep(t *testing.T) {
 func TestResolve3Keep(t *testing.T) {
 	t.Skip("weird case of abandoned storage, will handle it later")
 
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	putStorage := func(k string, v string) {
 		err := db.Put(dbutils.CurrentStateBucket, common.Hex2Bytes(k), common.Hex2Bytes(v))
 		require.NoError(err)
@@ -103,7 +115,7 @@ func TestResolve3Keep(t *testing.T) {
 	r := NewSubTrieLoader(0)
 	rs := NewRetainList(0)
 	rs.AddKey(common.Hex2Bytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	subTries, err := r.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaaaaaaa")}, []int{40}, false)
+	subTries, err := r.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{common.Hex2Bytes("aaaaaaaaaa")}, []int{40}, false)
 	require.NoError(err)
 
 	tr := New(common.Hash{})
@@ -116,7 +128,10 @@ func TestResolve3Keep(t *testing.T) {
 func TestTrieSubTrieLoader(t *testing.T) {
 	t.Skip("weird case of abandoned storage, will handle it later")
 
-	require, _, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, _, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	putStorage := func(k string, v string) {
 		err := db.Put(dbutils.CurrentStateBucket, common.Hex2Bytes(k), common.Hex2Bytes(v))
 		require.NoError(err)
@@ -134,7 +149,7 @@ func TestTrieSubTrieLoader(t *testing.T) {
 	rs.AddKey(common.Hex2Bytes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	rs.AddKey(common.Hex2Bytes("bbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	rs.AddKey(common.Hex2Bytes("bbbaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
-	_, err := resolver.LoadSubTries(db, 0, rs, nil, /* HashCollector */
+	_, err := resolver.LoadSubTries(db, t2, 0, rs, nil, /* HashCollector */
 		[][]byte{common.Hex2Bytes("aaaaa"), common.Hex2Bytes("bb")}, []int{40, 8}, false)
 	require.NoError(err, "resolve error")
 }
@@ -142,7 +157,9 @@ func TestTrieSubTrieLoader(t *testing.T) {
 func TestTwoStorageItems(t *testing.T) {
 	t.Skip("weird case of abandoned storage, will handle it later")
 
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
 
 	key1 := common.Hex2Bytes("d7b6990105719101dabeb77144f2a3385c8033acd3af97e9423a695e81ad1eb5f5")
 	key2 := common.Hex2Bytes("df6966c971051c3d54ec59162606531493a51404a002842f56009d7e5cf4a8c7f5")
@@ -168,7 +185,7 @@ func TestTwoStorageItems(t *testing.T) {
 
 	resolver := NewSubTrieLoader(0)
 	rs := NewRetainList(0)
-	subTries, err1 := resolver.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+	subTries, err1 := resolver.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 	require.NoError(err1, "resolve error")
 
 	assert.Equal(rootHash.String(), subTries.Hashes[0].String())
@@ -186,7 +203,7 @@ func TestTwoStorageItems(t *testing.T) {
 	resolver2 := NewSubTrieLoader(0)
 	rs2 := NewRetainList(0)
 	rs2.AddHex([]byte{0xd})
-	subTries, err = resolver2.LoadSubTries(db, 0, rs2, nil /* HashCollector */, [][]byte{{0xd0}}, []int{4}, false)
+	subTries, err = resolver2.LoadSubTries(db, t2, 0, rs2, nil /* HashCollector */, [][]byte{{0xd0}}, []int{4}, false)
 	require.NoError(err, "resolve error")
 
 	err = tr.HookSubTries(subTries, [][]byte{{0xd}}) // hook up to the prefix 0xd
@@ -198,7 +215,10 @@ func TestTwoStorageItems(t *testing.T) {
 }
 
 func TestTwoAccounts(t *testing.T) {
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	key1 := common.Hex2Bytes("03601462093b5945d1676df093446790fd31b20e7b12a2e8e5e09d068109616b")
 	acc := accounts.NewAccount()
 	acc.Initialised = true
@@ -220,7 +240,7 @@ func TestTwoAccounts(t *testing.T) {
 	resolver := NewSubTrieLoader(0)
 	rs := NewRetainList(0)
 	rs.AddKey(key1)
-	subTries, err1 := resolver.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+	subTries, err1 := resolver.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 	require.NoError(err1, "resolve error")
 	assert.Equal(expect.String(), subTries.Hashes[0].String())
 
@@ -234,7 +254,10 @@ func TestTwoAccounts(t *testing.T) {
 }
 
 func TestReturnErrOnWrongRootHash(t *testing.T) {
-	require, db := require.New(t), ethdb.NewMemDatabase()
+	require, _, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
+
 	putAccount := func(k string) {
 		a := accounts.Account{}
 		err := writeAccount(db, common.BytesToHash(common.Hex2Bytes(k)), a)
@@ -245,12 +268,14 @@ func TestReturnErrOnWrongRootHash(t *testing.T) {
 
 	rs := NewRetainList(0)
 	resolver := NewSubTrieLoader(0)
-	_, err := resolver.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+	_, err := resolver.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 	require.NotNil(t, err)
 }
 
 func TestApiDetails(t *testing.T) {
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
 
 	storageKey := func(incarnation uint64, k string) []byte {
 		return dbutils.GenerateCompositeStorageKey(common.HexToHash(k), incarnation, common.HexToHash("0000000000000000000000000000000000000000000000000000000000000000"))
@@ -323,7 +348,7 @@ func TestApiDetails(t *testing.T) {
 		rs.AddHex(hexf("000101%0122x", 0))
 		rs.AddHex(common.Hex2Bytes("000202"))
 		rs.AddHex(common.Hex2Bytes("0f"))
-		subTries, err := loader.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+		subTries, err := loader.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 		assert.NoError(err)
 
 		err = tr.HookSubTries(subTries, [][]byte{nil}) // hook up to the root
@@ -377,7 +402,7 @@ func TestApiDetails(t *testing.T) {
 		rl.AddHex(append(append(hexf("0f0f0f%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		dbPrefixes, fixedbits, hooks := tr.FindSubTriesToLoad(rl)
 		rl.Rewind()
-		subTries, err := loader.LoadSubTries(db, 0, rl, nil /* HashCollector */, dbPrefixes, fixedbits, false)
+		subTries, err := loader.LoadSubTries(db, t2, 0, rl, nil /* HashCollector */, dbPrefixes, fixedbits, false)
 		require.NoError(err)
 
 		err = tr.HookSubTries(subTries, hooks) // hook up to the root
@@ -424,7 +449,7 @@ func TestApiDetails(t *testing.T) {
 			}
 		}
 		dbPrefixes, fixedbits, hooks := tr.FindSubTriesToLoad(rs)
-		subTries, err := loader.LoadSubTries(db, 0, rs, nil /* HashCollector */, dbPrefixes, fixedbits, false)
+		subTries, err := loader.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, dbPrefixes, fixedbits, false)
 		require.NoError(err)
 
 		err = tr.HookSubTries(subTries, hooks) // hook up to the root
@@ -454,7 +479,9 @@ func hexf(format string, a ...interface{}) []byte {
 }
 
 func TestStorageSubTrieLoader2(t *testing.T) {
-	require, assert, db := require.New(t), assert.New(t), ethdb.NewMemDatabase()
+	require, assert, db, t2 := require.New(t), assert.New(t), ethdb.NewMemDatabase(), NewTrie2()
+	defer db.Close()
+	defer t2.Close()
 
 	kAcc1 := common.FromHex("0000cf1ce0664746d39af9f6db99dc3370282f1d9d48df7f804b7e6499558c83")
 	a1 := accounts.Account{
@@ -522,14 +549,14 @@ func TestStorageSubTrieLoader2(t *testing.T) {
 		resolver := NewSubTrieLoader(0)
 		rs := NewRetainList(0)
 		rs.AddHex(common.FromHex("00000001"))
-		_, err := resolver.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+		_, err := resolver.LoadSubTries(db, NewTrie2(), 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 		assert.NoError(err)
 	}
 	{
 		resolver := NewSubTrieLoader(0)
 		rs := NewRetainList(0)
 		rs.AddKey(dbutils.GenerateStoragePrefix(kAcc2, a2.Incarnation))
-		_, err := resolver.LoadSubTries(db, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
+		_, err := resolver.LoadSubTries(db, NewTrie2(), 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 		assert.NoError(err)
 	}
 }
