@@ -350,7 +350,6 @@ func TestApiDetails(t *testing.T) {
 		rs.AddHex(common.Hex2Bytes("0f"))
 		subTries, err := loader.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
 		assert.NoError(err)
-
 		err = tr.HookSubTries(subTries, [][]byte{nil}) // hook up to the root
 		assert.NoError(err)
 
@@ -401,6 +400,13 @@ func TestApiDetails(t *testing.T) {
 		rl.AddHex(append(append(hexf("000202%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		rl.AddHex(append(append(hexf("0f0f0f%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		dbPrefixes, fixedbits, hooks := tr.FindSubTriesToLoad(rl)
+		t2.Walk(dbutils.CurrentStateBucket, nil, 0, func(k []byte, v []byte) (bool, error) {
+			fmt.Printf("T2: %x->%x\n", k, v)
+			return true, nil
+		})
+		dbPrefixes2, _ := t2.FindSubTriesToLoad(rl)
+		fmt.Printf("dbPrefixes: %x \n", dbPrefixes)
+		fmt.Printf("dbPrefixes2: %x \n", dbPrefixes2)
 		rl.Rewind()
 		subTries, err := loader.LoadSubTries(db, t2, 0, rl, nil /* HashCollector */, dbPrefixes, fixedbits, false)
 		require.NoError(err)

@@ -129,11 +129,12 @@ func (s *PublicBlockChainAPI) GetProof(ctx context.Context, address common.Addre
 	}
 	sort.Strings(unfurlList)
 	loader := trie.NewFlatDbSubTrieLoader()
-	if err = loader.Reset(db, trie.NewTrie2(), unfurl, unfurl, nil /* hashCollector */, [][]byte{nil}, []int{0}, false); err != nil {
+	t2 := trie.NewTrie2()
+	if err = loader.Reset(db, t2, unfurl, unfurl, nil /* hashCollector */, [][]byte{nil}, []int{0}, false); err != nil {
 		return nil, err
 	}
 	r := &Receiver{defaultReceiver: trie.NewDefaultReceiver(), unfurlList: unfurlList, accountMap: accountMap, storageMap: storageMap}
-	r.defaultReceiver.Reset(rl, nil /* hashCollector */, false)
+	r.defaultReceiver.Reset(rl, nil /* hashCollector */, t2, false)
 	loader.SetStreamReceiver(r)
 	subTries, err1 := loader.LoadSubTries()
 	if err1 != nil {

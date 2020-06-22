@@ -369,7 +369,7 @@ func incrementIntermediateHashes(s *StageState, db ethdb.Database, t2 *trie.Trie
 		return err
 	}
 	// hashCollector in the line below will collect creations of new intermediate hashes
-	r.defaultReceiver.Reset(trie.NewRetainList(0), hashCollector, false)
+	r.defaultReceiver.Reset(trie.NewRetainList(0), hashCollector, t2, false)
 	loader.SetStreamReceiver(r)
 	if subTries, err := loader.LoadSubTries(); err == nil {
 		if subTries.Hashes[0] != expectedRootHash {
@@ -437,7 +437,7 @@ func unwindIntermediateHashesStageImpl(u *UnwindState, s *StageState, db ethdb.D
 		return err
 	}
 	// hashCollector in the line below will collect creations of new intermediate hashes
-	r.defaultReceiver.Reset(trie.NewRetainList(0), hashCollector, false)
+	r.defaultReceiver.Reset(trie.NewRetainList(0), hashCollector, t2, false)
 	loader.SetStreamReceiver(r)
 	if subTries, err := loader.LoadSubTries(); err == nil {
 		if subTries.Hashes[0] != expectedRootHash {

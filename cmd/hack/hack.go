@@ -2245,7 +2245,7 @@ func testGetProof(chaindata string, address common.Address, rewind int, regen bo
 		return err
 	}
 	r := &Receiver{defaultReceiver: trie.NewDefaultReceiver(), unfurlList: unfurlList, accountMap: accountMap, storageMap: storageMap}
-	r.defaultReceiver.Reset(rl, nil /* HashCollector */, false)
+	r.defaultReceiver.Reset(rl, nil /* HashCollector */, trie.NewTrie2(), false)
 	loader.SetStreamReceiver(r)
 	subTries, err1 := loader.LoadSubTries()
 	if err1 != nil {
@@ -2380,6 +2380,9 @@ func testUnwind5(chaindata string, rewind uint64) error {
 		return err
 	}
 	close(ch)
+	if err = stages.SaveStageProgress(db, stages.HashState, stage5progress-rewind, []byte{}); err != nil {
+		return err
+	}
 	return nil
 }
 
