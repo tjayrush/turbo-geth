@@ -100,10 +100,8 @@ func NewDefaultReceiver() *DefaultReceiver {
 }
 
 func NewFlatDbSubTrieLoader() *FlatDbSubTrieLoader {
-	t2 := ethdb.NewBolt().InMem().MustOpen()
 	fstl := &FlatDbSubTrieLoader{
 		defaultReceiver: NewDefaultReceiver(),
-		trie2:           t2,
 	}
 	return fstl
 }

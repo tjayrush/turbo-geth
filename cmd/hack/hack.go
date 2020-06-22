@@ -67,25 +67,6 @@ var bucket = flag.String("bucket", "", "bucket in the database")
 var hash = flag.String("hash", "0x00", "image for preimage or state root for testBlockHashes action")
 var preImage = flag.String("preimage", "0x00", "preimage")
 
-func bucketList(db *bolt.DB) [][]byte {
-	bucketList := [][]byte{}
-	err := db.View(func(tx *bolt.Tx) error {
-		err := tx.ForEach(func(name []byte, b *bolt.Bucket) error {
-			if len(name) == 20 || bytes.Equal(name, dbutils.CurrentStateBucket) {
-				n := make([]byte, len(name))
-				copy(n, name)
-				bucketList = append(bucketList, n)
-			}
-			return nil
-		})
-		return err
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Could view db: %s", err))
-	}
-	return bucketList
-}
-
 // prefixLen returns the length of the common prefix of a and b.
 func prefixLen(a, b []byte) int {
 	var i, length = 0, len(a)
@@ -372,9 +353,7 @@ func accountSavings(db *bolt.DB) (int, int) {
 }
 
 func printBuckets(db *bolt.DB) {
-	for _, bucket := range dbutils.Buckets {
-		fmt.Printf("%s\n", bucket)
-	}
+	fmt.Printf("%s\n", dbutils.Buckets)
 }
 
 func bucketStats(chaindata string) {
@@ -924,29 +903,6 @@ func testRewind(chaindata string, block, rewind int) {
 			check(err)
 		}
 	*/
-}
-
-func testStartup() {
-	startTime := time.Now()
-	//ethDb := ethdb.MustOpen(node.DefaultDataDir() + "/geth/chaindata")
-	ethDb := ethdb.MustOpen("/home/akhounov/.ethereum/geth/chaindata")
-	defer ethDb.Close()
-	bc, err := core.NewBlockChain(ethDb, nil, params.MainnetChainConfig, ethash.NewFaker(), vm.Config{}, nil, nil, nil)
-	check(err)
-	currentBlock := bc.CurrentBlock()
-	currentBlockNr := currentBlock.NumberU64()
-	fmt.Printf("Current block number: %d\n", currentBlockNr)
-	fmt.Printf("Current block root hash: %x\n", currentBlock.Root())
-	l := trie.NewSubTrieLoader(currentBlockNr)
-	rl := trie.NewRetainList(0)
-	subTries, err1 := l.LoadSubTries(ethDb, trie.NewTrie2(), currentBlockNr, rl, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
-	if err1 != nil {
-		fmt.Printf("%v\n", err1)
-	}
-	if subTries.Hashes[0] != currentBlock.Root() {
-		fmt.Printf("Hash mismatch, got %x, expected %x\n", subTries.Hashes[0], currentBlock.Root())
-	}
-	fmt.Printf("Took %v\n", time.Since(startTime))
 }
 
 func dbSlice(chaindata string, bucket []byte, prefix []byte) {
@@ -2400,7 +2356,7 @@ func testStage5(chaindata string, reset bool) error {
 	core.UsePlainStateExecution = true
 	ch := make(chan struct{})
 	stageState := &stagedsync.StageState{Stage: stages.HashState, BlockNumber: stage5progress}
-	if err = stagedsync.SpawnHashStateStage(stageState, db, "", ch); err != nil {
+	if err = stagedsync.SpawnHashStateStage(stageState, db, trie.NewTrie2(), "", ch); err != nil {
 		return err
 	}
 	close(ch)
@@ -2420,7 +2376,7 @@ func testUnwind5(chaindata string, rewind uint64) error {
 	ch := make(chan struct{})
 	u := &stagedsync.UnwindState{Stage: stages.HashState, UnwindPoint: stage5progress - rewind}
 	s := &stagedsync.StageState{Stage: stages.HashState, BlockNumber: stage5progress}
-	if err = stagedsync.UnwindHashStateStage(u, s, db, "", ch); err != nil {
+	if err = stagedsync.UnwindHashStateStage(u, s, db, trie.NewTrie2(), "", ch); err != nil {
 		return err
 	}
 	close(ch)
@@ -2589,7 +2545,6 @@ func main() {
 	}
 	//rlpIndices()
 	//printFullNodeRLPs()
-	//testStartup()
 	//testDifficulty()
 	//testRewindTests()
 	//if *reset != -1 {
