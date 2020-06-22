@@ -276,17 +276,14 @@ func (hb *Trie2HashBilder) hashCollector(keyHex []byte, hash []byte) error {
 	}
 
 	if len(keyHex) == 0 || hash == nil {
-		fmt.Printf("Skip???: %x\n", keyHex)
 		return nil
 	}
 
 	dbutils.RemoveIncarnationFromKey(keyHex, &keyHex)
-	fmt.Printf("Put parent: %x\n", keyHex)
 	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(keyHex), common.CopyBytes(hash)); err != nil {
 		return err
 	}
 	for k, v := range hb.branchChildren {
-		fmt.Printf("Put child: %x\n", append(keyHex, byte(k)))
 		if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, append(keyHex, byte(k)), v); err != nil {
 			return err
 		}

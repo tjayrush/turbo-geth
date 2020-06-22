@@ -404,13 +404,8 @@ func TestApiDetails(t *testing.T) {
 		rl.AddHex(append(append(hexf("000202%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		rl.AddHex(append(append(hexf("0f0f0f%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		dbPrefixes, fixedbits, hooks := tr.FindSubTriesToLoad(rl)
-		t2.Walk(dbutils.IntermediateTrieHashBucket, nil, 0, func(k []byte, v []byte) (bool, error) {
-			fmt.Printf("T2: %x\n", k)
-			return true, nil
-		})
 		dbPrefixes2, _ := t2.FindSubTriesToLoad(rl)
-		fmt.Printf("dbPrefixes: %x \n", dbPrefixes)
-		fmt.Printf("dbPrefixes2: %x \n", dbPrefixes2)
+		assert.Equal(dbPrefixes, dbPrefixes2)
 		rl.Rewind()
 		subTries, err := loader.LoadSubTries(db, t2, 0, rl, nil /* HashCollector */, dbPrefixes, fixedbits, false)
 		require.NoError(err)
