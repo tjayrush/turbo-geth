@@ -96,7 +96,7 @@ type DefaultReceiver struct {
 
 func NewDefaultReceiver() *DefaultReceiver {
 	return &DefaultReceiver{
-		hb: &Trie2HashBilder{HashBuilder: NewHashBuilder(false)},
+		hb: NewTrie2HashBuilder(NewHashBuilder(false)),
 	}
 }
 
@@ -809,10 +809,6 @@ func (dr *DefaultReceiver) genStructStorage() error {
 	} else {
 		dr.leafData.Value = rlphacks.RlpSerializableBytes(dr.valueStorage.Bytes())
 		data = &dr.leafData
-
-		dr.hb.storageKey = append(dr.hb.storageKey[:0], dr.currStorage.Bytes()...)
-		dr.hb.storageKey = dr.hb.storageKey[:len(dr.hb.storageKey)-1]
-		dr.hb.storageValue = append(dr.hb.storageValue[:0], dr.currStorage.Bytes()...)
 	}
 	dr.groups, err = GenStructStep(dr.rl.Retain, dr.currStorage.Bytes(), dr.succStorage.Bytes(), dr.hb, dr.hc, data, dr.groups, dr.trace)
 	if err != nil {
@@ -874,10 +870,6 @@ func (dr *DefaultReceiver) genStructAccount() error {
 		}
 		dr.accData.Incarnation = dr.a.Incarnation
 		data = &dr.accData
-
-		dr.hb.accountKey = append(dr.hb.accountKey[:0], dr.curr.Bytes()...)
-		dr.hb.inc = dr.a.Incarnation
-		dr.hb.accountKey = dr.hb.accountKey[:len(dr.hb.accountKey)-1]
 	}
 	dr.wasIHStorage = false
 	dr.currStorage.Reset()

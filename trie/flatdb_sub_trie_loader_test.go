@@ -405,6 +405,7 @@ func TestApiDetails(t *testing.T) {
 		rl.AddHex(append(append(hexf("0f0f0f%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		dbPrefixes, fixedbits, hooks := tr.FindSubTriesToLoad(rl)
 		dbPrefixes2, _ := t2.FindSubTriesToLoad(rl)
+		fmt.Printf("%x\n", dbPrefixes2)
 		assert.Equal(dbPrefixes, dbPrefixes2)
 		rl.Rewind()
 		subTries, err := loader.LoadSubTries(db, t2, 0, rl, nil /* HashCollector */, dbPrefixes, fixedbits, false)

@@ -27,17 +27,20 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/ledgerwatch/turbo-geth/common"
 	"github.com/ledgerwatch/turbo-geth/common/dbutils"
+	"github.com/ledgerwatch/turbo-geth/core/types/accounts"
 	"github.com/ledgerwatch/turbo-geth/ethdb"
 	"github.com/ledgerwatch/turbo-geth/trie/rlphacks"
 )
 
 type Trie2 struct {
 	ethdb.Database
+	accs map[common.Hash]*accounts.Account
 }
 
 func NewTrie2() *Trie2 {
 	return &Trie2{
-		ethdb.NewObjectDatabase(ethdb.NewBolt().InMem().MustOpen()),
+		Database: ethdb.NewObjectDatabase(ethdb.NewBolt().InMem().MustOpen()),
+		accs:     make(map[common.Hash]*accounts.Account, 1024),
 	}
 }
 
@@ -90,7 +93,6 @@ func (t *Trie2) FindSubTriesToLoad(rl *RetainList) (prefixes [][]byte, fixedbits
 	inc := make([]byte, 8)
 	_ = t.KV().View(context.Background(), func(tx ethdb.Tx) error {
 		ih := tx.Bucket(dbutils.IntermediateTrieHashBucket).Cursor()
-		c := tx.Bucket(dbutils.CurrentStateBucket).Cursor()
 		next := []byte{}
 		parent := make([]byte, 0, common.HashLength*4+common.IncarnationLength*2) // longest storage key as nibbles
 		parentV := make([]byte, 0, common.HashLength)
@@ -137,15 +139,11 @@ func (t *Trie2) FindSubTriesToLoad(rl *RetainList) (prefixes [][]byte, fixedbits
 			if bytes.HasPrefix(k, parent) { // handle child
 				if len(k) == common.HashLength*2 {
 					CompressNibbles(k, &buf)
-					cK, cV, err := c.Seek(buf)
-					if err != nil {
-						return err
+					acc, ok := t.accs[common.BytesToHash(buf)]
+					if !ok {
+						panic(fmt.Sprintf("no such account in map: %x\n", k))
 					}
-					if !bytes.Equal(cK, buf) {
-						panic(fmt.Sprintf("%x!=%x\n", buf, cK))
-					}
-
-					copy(inc, cV)
+					binary.BigEndian.PutUint64(inc, ^acc.Incarnation)
 				}
 				continue
 			}
@@ -174,16 +172,17 @@ func (t *Trie2) FindSubTriesToLoad(rl *RetainList) (prefixes [][]byte, fixedbits
 
 type Trie2HashBilder struct {
 	*HashBuilder
-	trie2        *Trie2
-	hc           HashCollector
-	batch        ethdb.DbWithPendingMutations
-	accountKey   []byte
-	inc          uint64
-	storageKey   []byte
-	storageValue []byte
+	trie2 *Trie2
+	hc    HashCollector
+	batch ethdb.DbWithPendingMutations
 
 	accRoot        common.Hash
 	branchChildren map[uint][]byte
+	accKey         []byte
+}
+
+func NewTrie2HashBuilder(hb *HashBuilder) *Trie2HashBilder {
+	return &Trie2HashBilder{HashBuilder: hb, accKey: make([]byte, 32)}
 }
 
 func (hb *Trie2HashBilder) Reset() {
@@ -194,8 +193,11 @@ func (hb *Trie2HashBilder) Reset() {
 }
 
 func (hb *Trie2HashBilder) leaf(length int, keyHex []byte, val rlphacks.RlpSerializable) error {
-	hb.storageKey = append(append(hb.storageKey[:0], hb.storageKey[:64]...), hb.storageKey[:64]...)
-	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(hb.storageKey), common.CopyBytes(hb.storageValue)); err != nil {
+	k := make([]byte, 128)
+	copy(k, keyHex[:64])
+	copy(k, keyHex[80:144])
+	fmt.Printf("Leaf: %x\n", k)
+	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, k, common.CopyBytes(val.RawBytes())); err != nil {
 		return err
 	}
 	if err := hb.HashBuilder.leaf(length, keyHex, val); err != nil {
@@ -229,15 +231,12 @@ func (hb *Trie2HashBilder) branch(set uint16) error {
 }
 
 func (hb *Trie2HashBilder) accountLeaf(length int, keyHex []byte, balance *uint256.Int, nonce uint64, incarnation uint64, fieldSet uint32) error {
-	inc := make([]byte, 8)
-	binary.BigEndian.PutUint64(inc, ^hb.inc)
-	k := make([]byte, len(hb.accountKey)/2)
-	CompressNibbles(hb.accountKey, &k)
-	if err := hb.batch.Put(dbutils.CurrentStateBucket, k, inc); err != nil {
-		return err
-	}
+	var accCopy accounts.Account
+	accCopy.Copy(&hb.acc)
+	CompressNibbles(keyHex[:64], &hb.accKey)
+	hb.trie2.accs[common.BytesToHash(hb.accKey)] = &accCopy
+
 	var val []byte
-	copy(hb.accRoot[:], EmptyRoot[:])
 	if fieldSet&uint32(4) != 0 {
 		copy(hb.accRoot[:], hb.hashStack[len(hb.hashStack)-common.HashLength:len(hb.hashStack)])
 		if hb.accRoot == EmptyRoot {
@@ -249,7 +248,7 @@ func (hb *Trie2HashBilder) accountLeaf(length int, keyHex []byte, balance *uint2
 		val = []byte{}
 	}
 
-	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(hb.accountKey), val); err != nil {
+	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(keyHex[:len(keyHex)-1]), val); err != nil {
 		return err
 	}
 
