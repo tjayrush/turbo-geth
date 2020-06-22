@@ -20,6 +20,7 @@ package trie
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/bits"
 
@@ -85,11 +86,15 @@ func (t *Trie2) FindSubTriesToLoad(rl *RetainList) (prefixes [][]byte, fixedbits
 	//})
 
 	var ok bool
+	var buf []byte
+	inc := make([]byte, 8)
 	_ = t.KV().View(context.Background(), func(tx ethdb.Tx) error {
-		ih := tx.Bucket(dbutils.CurrentStateBucket).Cursor()
+		ih := tx.Bucket(dbutils.IntermediateTrieHashBucket).Cursor()
+		c := tx.Bucket(dbutils.CurrentStateBucket).Cursor()
 		next := []byte{}
 		parent := make([]byte, 0, common.HashLength*4+common.IncarnationLength*2) // longest storage key as nibbles
-		parentV := make([]byte, 0, common.HashLength)                             // longest storage key as nibbles
+		parentV := make([]byte, 0, common.HashLength)
+
 		k, v, err := ih.First()
 		fmt.Printf("First()%x \n", k)
 		for k != nil {
@@ -130,12 +135,36 @@ func (t *Trie2) FindSubTriesToLoad(rl *RetainList) (prefixes [][]byte, fixedbits
 				return err
 			}
 			if bytes.HasPrefix(k, parent) { // handle child
+				if len(k) == common.HashLength*2 {
+					CompressNibbles(k, &buf)
+					cK, cV, err := c.Seek(buf)
+					if err != nil {
+						return err
+					}
+					if !bytes.Equal(cK, buf) {
+						panic(fmt.Sprintf("%x!=%x\n", buf, cK))
+					}
+
+					copy(inc, cV)
+				}
 				continue
 			}
-			if len(parentV) > 0 {
-				prefixes = append(prefixes, common.CopyBytes(parent)) // handle leaf
-			}
+
 			fmt.Printf("Child: %x , not under %x\n", k, parent)
+			if len(parentV) > 0 { // if not empty root
+				CompressNibbles(parent, &parent)
+				var v []byte
+				if len(parent) >= common.HashLength {
+					v = make([]byte, len(parent)+common.IncarnationLength)
+					copy(v[:32], parent[:32])
+					copy(v[32:40], inc)
+					copy(v[40:], parent[32:])
+				} else {
+					v = common.CopyBytes(parent)
+				}
+				fmt.Printf("Found: %x\n", v)
+				prefixes = append(prefixes, v) // handle leaf
+			}
 			parent = append(parent[:0], k...) // go to next trie
 		}
 		return nil
@@ -149,16 +178,15 @@ type Trie2HashBilder struct {
 	hc           HashCollector
 	batch        ethdb.DbWithPendingMutations
 	accountKey   []byte
-	accountValue []byte
+	inc          uint64
 	storageKey   []byte
 	storageValue []byte
 
 	accRoot        common.Hash
-	branchChildren map[int][]byte
+	branchChildren map[uint][]byte
 }
 
 func (hb *Trie2HashBilder) Reset() {
-	fmt.Printf("Reset!\n")
 	if hb.batch == nil {
 		hb.batch = hb.trie2.NewBatch()
 	}
@@ -166,7 +194,8 @@ func (hb *Trie2HashBilder) Reset() {
 }
 
 func (hb *Trie2HashBilder) leaf(length int, keyHex []byte, val rlphacks.RlpSerializable) error {
-	if err := hb.batch.Put(dbutils.CurrentStateBucket, common.CopyBytes(hb.storageKey), common.CopyBytes(hb.storageValue)); err != nil {
+	hb.storageKey = append(append(hb.storageKey[:0], hb.storageKey[:64]...), hb.storageKey[:64]...)
+	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(hb.storageKey), common.CopyBytes(hb.storageValue)); err != nil {
 		return err
 	}
 	if err := hb.HashBuilder.leaf(length, keyHex, val); err != nil {
@@ -177,7 +206,7 @@ func (hb *Trie2HashBilder) leaf(length int, keyHex []byte, val rlphacks.RlpSeria
 
 func (hb *Trie2HashBilder) branch(set uint16) error {
 	if hb.branchChildren == nil {
-		hb.branchChildren = make(map[int][]byte)
+		hb.branchChildren = make(map[uint][]byte)
 	}
 
 	digits := bits.OnesCount16(set)
@@ -190,7 +219,7 @@ func (hb *Trie2HashBilder) branch(set uint16) error {
 	for digit := uint(0); digit < 16; digit++ {
 		if ((uint16(1) << digit) & set) != 0 {
 			if nodes[i] == nil {
-				hb.branchChildren[i] = common.CopyBytes(hashes[hashStackStride*i+1 : hashStackStride*(i+1)])
+				hb.branchChildren[digit] = common.CopyBytes(hashes[hashStackStride*i+1 : hashStackStride*(i+1)])
 			}
 			i++
 		}
@@ -200,17 +229,28 @@ func (hb *Trie2HashBilder) branch(set uint16) error {
 }
 
 func (hb *Trie2HashBilder) accountLeaf(length int, keyHex []byte, balance *uint256.Int, nonce uint64, incarnation uint64, fieldSet uint32) error {
+	inc := make([]byte, 8)
+	binary.BigEndian.PutUint64(inc, ^hb.inc)
+	k := make([]byte, len(hb.accountKey)/2)
+	CompressNibbles(hb.accountKey, &k)
+	if err := hb.batch.Put(dbutils.CurrentStateBucket, k, inc); err != nil {
+		return err
+	}
+	var val []byte
+	copy(hb.accRoot[:], EmptyRoot[:])
 	if fieldSet&uint32(4) != 0 {
 		copy(hb.accRoot[:], hb.hashStack[len(hb.hashStack)-common.HashLength:len(hb.hashStack)])
-		var val []byte
 		if hb.accRoot == EmptyRoot {
 			val = []byte{}
 		} else {
 			val = common.CopyBytes(hb.accRoot[:])
 		}
-		if err := hb.batch.Put(dbutils.CurrentStateBucket, common.CopyBytes(hb.accountKey), val); err != nil {
-			return err
-		}
+	} else {
+		val = []byte{}
+	}
+
+	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(hb.accountKey), val); err != nil {
+		return err
 	}
 
 	return hb.HashBuilder.accountLeaf(length, keyHex, balance, nonce, incarnation, fieldSet)
@@ -229,24 +269,30 @@ func (hb *Trie2HashBilder) rootHash() common.Hash {
 }
 
 func (hb *Trie2HashBilder) hashCollector(keyHex []byte, hash []byte) error {
-	if len(keyHex) > 0 && hash != nil {
-		fmt.Printf("Put parent: %x\n", keyHex)
-		if err := hb.batch.Put(dbutils.CurrentStateBucket, common.CopyBytes(keyHex), common.CopyBytes(hash)); err != nil {
+	if hb.hc != nil {
+		if err := hb.hc(keyHex, hash); err != nil {
 			return err
 		}
-		for k, v := range hb.branchChildren {
-			fmt.Printf("Put child: %x\n", append(keyHex, byte(k)))
-			if err := hb.batch.Put(dbutils.CurrentStateBucket, append(keyHex, byte(k)), v); err != nil {
-				return err
-			}
+	}
+
+	if len(keyHex) == 0 || hash == nil {
+		fmt.Printf("Skip???: %x\n", keyHex)
+		return nil
+	}
+
+	dbutils.RemoveIncarnationFromKey(keyHex, &keyHex)
+	fmt.Printf("Put parent: %x\n", keyHex)
+	if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, common.CopyBytes(keyHex), common.CopyBytes(hash)); err != nil {
+		return err
+	}
+	for k, v := range hb.branchChildren {
+		fmt.Printf("Put child: %x\n", append(keyHex, byte(k)))
+		if err := hb.batch.Put(dbutils.IntermediateTrieHashBucket, append(keyHex, byte(k)), v); err != nil {
+			return err
 		}
-
-		hb.branchChildren = make(map[int][]byte)
 	}
 
-	if hb.hc != nil {
-		return hb.hc(keyHex, hash)
-	}
+	hb.branchChildren = make(map[uint][]byte)
 	return nil
 }
 

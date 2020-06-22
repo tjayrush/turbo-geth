@@ -345,7 +345,10 @@ func TestApiDetails(t *testing.T) {
 
 		loader := NewSubTrieLoader(0)
 		rs := NewRetainList(0)
-		rs.AddHex(hexf("000101%0122x", 0))
+
+		sK := storageKey(1, fmt.Sprintf("011%061x", 0))
+		DecompressNibbles(sK, &sK)
+		rs.AddHex(sK)
 		rs.AddHex(common.Hex2Bytes("000202"))
 		rs.AddHex(common.Hex2Bytes("0f"))
 		subTries, err := loader.LoadSubTries(db, t2, 0, rs, nil /* HashCollector */, [][]byte{nil}, []int{0}, false)
@@ -390,6 +393,7 @@ func TestApiDetails(t *testing.T) {
 	{ // storage loader
 		loader := NewSubTrieLoader(0)
 		rl := NewRetainList(0)
+
 		binary.BigEndian.PutUint64(bytes8[:], ^uint64(2))
 		for i, b := range bytes8[:] {
 			bytes16[i*2] = b / 16
@@ -400,8 +404,8 @@ func TestApiDetails(t *testing.T) {
 		rl.AddHex(append(append(hexf("000202%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		rl.AddHex(append(append(hexf("0f0f0f%0122x", 0), bytes16[:]...), hexf("%0128x", 0)...))
 		dbPrefixes, fixedbits, hooks := tr.FindSubTriesToLoad(rl)
-		t2.Walk(dbutils.CurrentStateBucket, nil, 0, func(k []byte, v []byte) (bool, error) {
-			fmt.Printf("T2: %x->%x\n", k, v)
+		t2.Walk(dbutils.IntermediateTrieHashBucket, nil, 0, func(k []byte, v []byte) (bool, error) {
+			fmt.Printf("T2: %x\n", k)
 			return true, nil
 		})
 		dbPrefixes2, _ := t2.FindSubTriesToLoad(rl)

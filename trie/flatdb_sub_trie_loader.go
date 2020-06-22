@@ -293,9 +293,6 @@ func (fstl *FlatDbSubTrieLoader) iteration(c, ih cursor, first bool) error {
 			fstl.hashValue = nil
 			fstl.storageValue = append(fstl.storageValue[:0], fstl.v...)
 
-			DecompressNibbles(fstl.storageKey, &fstl.defaultReceiver.hb.storageKey)
-			fstl.defaultReceiver.hb.storageValue = fstl.storageValue
-
 			if fstl.k, fstl.v, err = c.Next(); err != nil {
 				return err
 			}
@@ -312,9 +309,6 @@ func (fstl *FlatDbSubTrieLoader) iteration(c, ih cursor, first bool) error {
 			}
 			copy(fstl.accAddrHashWithInc[:], fstl.k)
 			binary.BigEndian.PutUint64(fstl.accAddrHashWithInc[32:], ^fstl.accountValue.Incarnation)
-
-			DecompressNibbles(fstl.accAddrHashWithInc[:], &fstl.defaultReceiver.hb.accountKey)
-			fstl.defaultReceiver.hb.accountValue = append(fstl.defaultReceiver.hb.accountValue[:0], fstl.v...)
 
 			// Now we know the correct incarnation of the account, an
 			//d we can skip all irrelevant storage records
@@ -815,6 +809,10 @@ func (dr *DefaultReceiver) genStructStorage() error {
 	} else {
 		dr.leafData.Value = rlphacks.RlpSerializableBytes(dr.valueStorage.Bytes())
 		data = &dr.leafData
+
+		dr.hb.storageKey = append(dr.hb.storageKey[:0], dr.currStorage.Bytes()...)
+		dr.hb.storageKey = dr.hb.storageKey[:len(dr.hb.storageKey)-1]
+		dr.hb.storageValue = append(dr.hb.storageValue[:0], dr.currStorage.Bytes()...)
 	}
 	dr.groups, err = GenStructStep(dr.rl.Retain, dr.currStorage.Bytes(), dr.succStorage.Bytes(), dr.hb, dr.hc, data, dr.groups, dr.trace)
 	if err != nil {
@@ -843,6 +841,7 @@ func (dr *DefaultReceiver) advanceKeysAccount(k []byte, terminator bool) {
 		dr.succ.WriteByte(b / 16)
 		dr.succ.WriteByte(b % 16)
 	}
+
 	if terminator {
 		dr.succ.WriteByte(16)
 	}
@@ -875,6 +874,10 @@ func (dr *DefaultReceiver) genStructAccount() error {
 		}
 		dr.accData.Incarnation = dr.a.Incarnation
 		data = &dr.accData
+
+		dr.hb.accountKey = append(dr.hb.accountKey[:0], dr.curr.Bytes()...)
+		dr.hb.inc = dr.a.Incarnation
+		dr.hb.accountKey = dr.hb.accountKey[:len(dr.hb.accountKey)-1]
 	}
 	dr.wasIHStorage = false
 	dr.currStorage.Reset()
