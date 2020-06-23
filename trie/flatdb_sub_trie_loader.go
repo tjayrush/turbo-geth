@@ -91,7 +91,6 @@ type DefaultReceiver struct {
 	leafData     GenStructStepLeafData
 	accData      GenStructStepAccountData
 	witnessSize  uint64
-	t2w          ethdb.Cursor
 }
 
 func NewDefaultReceiver() *DefaultReceiver {
@@ -154,14 +153,9 @@ func (fstl *FlatDbSubTrieLoader) SetStreamReceiver(receiver StreamReceiver) {
 	fstl.receiver = receiver
 }
 
-type cursor interface {
-	SeekTo(seek []byte) ([]byte, []byte, error)
-	Next() ([]byte, []byte, error)
-}
-
 // iteration moves through the database buckets and creates at most
 // one stream item, which is indicated by setting the field fstl.itemPresent to true
-func (fstl *FlatDbSubTrieLoader) iteration(c, ih cursor, first bool) error {
+func (fstl *FlatDbSubTrieLoader) iteration(c, ih ethdb.Cursor, first bool) error {
 	var isIH bool
 	var minKey []byte
 	var err error
@@ -332,7 +326,6 @@ func (fstl *FlatDbSubTrieLoader) iteration(c, ih cursor, first bool) error {
 	// ih part
 	fstl.minKeyAsNibbles.Reset()
 	keyToNibbles(minKey, &fstl.minKeyAsNibbles)
-
 	if fstl.minKeyAsNibbles.Len() < cutoff {
 		if fstl.ihK, fstl.ihV, err = ih.Next(); err != nil {
 			return err
@@ -634,10 +627,9 @@ func (dr *DefaultReceiver) Receive(itemType StreamItem,
 }
 
 func (dr *DefaultReceiver) Result() SubTries {
-	fmt.Printf("Commit\n")
-	if _, err := dr.hb.batch.Commit(); err != nil {
-		panic(err)
-	}
+	//if _, err := dr.hb.batch.Commit(); err != nil {
+	//	panic(err)
+	//}
 	return dr.subTries
 }
 
@@ -724,9 +716,7 @@ func (fstl *FlatDbSubTrieLoader) LoadSubTries() (SubTries, error) {
 		if err := fstl.iteration(c, ih, true /* first */); err != nil {
 			return err
 		}
-		j := 0
 		for fstl.rangeIdx < len(fstl.dbPrefixes) {
-			j++
 			for !fstl.itemPresent {
 				if err := fstl.iteration(c, ih, false /* first */); err != nil {
 					return err
@@ -739,7 +729,6 @@ func (fstl *FlatDbSubTrieLoader) LoadSubTries() (SubTries, error) {
 				fstl.itemPresent = false
 			}
 		}
-		fmt.Printf("Iterate  over %d\n", j)
 		return nil
 	}); err != nil {
 		return SubTries{}, err

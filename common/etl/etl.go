@@ -190,13 +190,3 @@ func (s *bucketState) Stopped() error {
 func IdentityLoadFunc(k []byte, value []byte, _ State, next LoadNextFunc) error {
 	return next(k, value)
 }
-
-// DeleteLoadFunc delete all collected entries
-func DeleteLoadFunc(k []byte, value []byte, s State, next LoadNextFunc) error {
-	for i := 0; i < len(k); i++ {
-		if err := next(k[:i], nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}

@@ -3,6 +3,7 @@ package state
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/VictoriaMetrics/fastcache"
 
@@ -14,16 +15,16 @@ import (
 
 // Implements StateReader by wrapping database only, without trie
 type DbStateReader struct {
-	db             ethdb.Getter
-	accountCache   *fastcache.Cache
-	storageCache   *fastcache.Cache
-	codeCache      *fastcache.Cache
-	codeSizeCache  *fastcache.Cache
+	db            ethdb.Getter
+	accountCache  *fastcache.Cache
+	storageCache  *fastcache.Cache
+	codeCache     *fastcache.Cache
+	codeSizeCache *fastcache.Cache
 }
 
 func NewDbStateReader(db ethdb.Getter) *DbStateReader {
 	return &DbStateReader{
-		db:             db,
+		db: db,
 	}
 }
 
@@ -43,13 +44,21 @@ func (dbr *DbStateReader) SetCodeSizeCache(codeSizeCache *fastcache.Cache) {
 	dbr.codeSizeCache = codeSizeCache
 }
 
+var i int
+var j int
+
 func (dbr *DbStateReader) ReadAccountData(address common.Address) (*accounts.Account, error) {
 	var enc []byte
 	var ok bool
 	if dbr.accountCache != nil {
 		enc, ok = dbr.accountCache.HasGet(nil, address[:])
 	}
+	i++
 	if !ok {
+		j++
+		if j%100 == 0 {
+			fmt.Printf("read acc cache miss rate: %d/%d=%.4f\n", j, i, float64(j)/float64(i))
+		}
 		var err error
 		if addrHash, err1 := common.HashData(address[:]); err1 == nil {
 			enc, err = dbr.db.Get(dbutils.CurrentStateBucket, addrHash[:])
@@ -73,6 +82,9 @@ func (dbr *DbStateReader) ReadAccountData(address common.Address) (*accounts.Acc
 	return acc, nil
 }
 
+var is int
+var js int
+
 func (dbr *DbStateReader) ReadAccountStorage(address common.Address, incarnation uint64, key *common.Hash) ([]byte, error) {
 	addrHash, err := common.HashData(address[:])
 	if err != nil {
@@ -83,11 +95,17 @@ func (dbr *DbStateReader) ReadAccountStorage(address common.Address, incarnation
 		return nil, err1
 	}
 	compositeKey := dbutils.GenerateCompositeStorageKey(addrHash, incarnation, seckey)
+	is++
 	if dbr.storageCache != nil {
 		if enc, ok := dbr.storageCache.HasGet(nil, compositeKey); ok {
 			return enc, nil
 		}
 	}
+	js++
+	if js%100 == 0 {
+		fmt.Printf("read storage cache miss rate: %d/%d=%.4f\n", js, is, float64(js)/float64(is))
+	}
+
 	enc, err2 := dbr.db.Get(dbutils.CurrentStateBucket, compositeKey)
 	if err2 != nil && !entryNotFound(err2) {
 		return nil, err2

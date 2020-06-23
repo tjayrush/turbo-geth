@@ -582,6 +582,10 @@ func (c *LmdbCursor) Delete(key []byte) error {
 		}
 	}
 
+	if len(key) == 0 {
+		return fmt.Errorf("lmdb doesn't support empty keys. bucket: %s", dbutils.Buckets[c.bucket.id])
+	}
+
 	k, _, err := c.Seek(key)
 	if err != nil {
 		return err
@@ -590,7 +594,10 @@ func (c *LmdbCursor) Delete(key []byte) error {
 	if !bytes.Equal(k, key) {
 		return nil
 	}
-	return c.cursor.Del(0)
+	if err := c.cursor.Del(0); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *LmdbCursor) Put(key []byte, value []byte) error {

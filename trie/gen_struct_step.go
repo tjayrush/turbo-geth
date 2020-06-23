@@ -114,7 +114,7 @@ func GenStructStep(
 		} else {
 			maxLen = succLen
 		}
-		if trace {
+		if false {
 			fmt.Printf("curr: %x, succ: %x, maxLen %d, groups: %b, precLen: %d, succLen: %d, buildExtensions: %t\n", curr, succ, maxLen, groups, precLen, succLen, buildExtensions)
 		}
 		// Add the digit immediately following the max common prefix and compute length of remainder length
